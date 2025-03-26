@@ -1,0 +1,350 @@
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ZAxis } from 'recharts';
+
+const ModelVisualization = () => {
+  // State for model parameters
+  const [params, setParams] = useState({
+    Pr: 100.0,      // Principal amount
+    T: 5.0,         // Time to maturity (years)
+    sigma: 0.3,     // Volatility
+    r: 0.05,        // Risk-free rate
+    d: 0.01,        // Dividend yield
+    rc: 0.03,       // Credit spread
+    cv: 1.2,        // Conversion ratio
+    M: 100,         // Number of stock price steps
+    N: 200,         // Number of time steps
+  });
+  
+  // State for model results
+  const [results, setResults] = useState({
+    timeSlices: [],
+    stockSlices: [],
+    stability: null,
+    issues: []
+  });
+  
+  // Update model when parameters change
+  useEffect(() => {
+    // Simulate running the model - in a real app this would call the actual model
+    const simulateModel = () => {
+      const { Pr, T, sigma, r, d, rc, cv, M, N } = params;
+      
+      // Compute grid parameters
+      const dx = Math.log(450)/M;
+      const dt = T/N;
+      
+      // Check stability condition
+      const stable = dt <= dx*dx/(sigma*sigma);
+      const stabilityMessage = stable ? 
+        "Model is numerically stable" : 
+        `Stability condition violated: dt=${dt.toFixed(4)}, dx²/σ²=${(dx*dx/(sigma*sigma)).toFixed(4)}`;
+      
+      // Generate some sample data for visualization
+      // In real use, this would be the actual model result
+      const timeSlices = [];
+      const stockSlices = [];
+      
+      // Generate sample time slices
+      for (let i = 0; i <= M; i++) {
+        const S = Math.exp(i * dx);
+        
+        // Different time points
+        const t0Data = { stockPrice: S };
+        const tMidData = { stockPrice: S };
+        const tEndData = { stockPrice: S };
+        
+        // Value at initial time
+        t0Data.value = S < cv ? Pr : Pr * S / cv;
+        
+        // Value at mid time (add some pattern)
+        tMidData.value = S < cv ? 
+          Pr * Math.exp(-r * T/2) : 
+          Pr * S / cv * (1 + r * T/2);
+        
+        // Value at maturity
+        tEndData.value = S < cv ? Pr : Pr * S / cv;
+        
+        // Sometimes add unstable values to show where model breaks
+        if (!stable && S > 300 && Math.random() > 0.7) {
+          t0Data.value = Pr * (5 + Math.random() * 10);
+          tMidData.value = -Pr * Math.random() * 2;
+        }
+        
+        timeSlices.push({
+          stockPrice: S,
+          initial: t0Data.value,
+          middle: tMidData.value,
+          maturity: tEndData.value
+        });
+      }
+      
+      // Generate sample stock price slices
+      for (let j = 0; j <= N; j++) {
+        const t = j * dt;
+        
+        // Different stock prices
+        const lowS = { time: t };
+        const midS = { time: t };
+        const highS = { time: t };
+        
+        // Low stock price behavior
+        lowS.value = Pr * Math.exp(-r * t);
+        
+        // Mid stock price behavior
+        midS.value = Pr * (1 + 0.1 * Math.sin(t * Math.PI / T));
+        
+        // High stock price behavior (converted)
+        highS.value = Pr * 2 * (1 - Math.exp(-t/T));
+        
+        // Sometimes add unstable values
+        if (!stable && t > 3 && Math.random() > 0.8) {
+          highS.value = Pr * (3 + Math.random() * 5);
+        }
+        
+        stockSlices.push({
+          time: t,
+          low: lowS.value,
+          medium: midS.value,
+          high: highS.value
+        });
+      }
+      
+      // Identify potential issues
+      let issues = [];
+      
+      if (!stable) {
+        issues.push("Numerical instability: time step too large relative to price step");
+      }
+      
+      if (sigma > 0.5) {
+        issues.push("High volatility may cause oscillations in the solution");
+      }
+      
+      if (M < 50 || N < 100) {
+        issues.push("Grid may be too coarse for accurate results");
+      }
+      
+      if (rc < 0.01) {
+        issues.push("Credit spread is very low, may not reflect realistic credit risk");
+      }
+      
+      setResults({
+        timeSlices,
+        stockSlices,
+        stability: stabilityMessage,
+        stable,
+        issues
+      });
+    };
+    
+    simulateModel();
+  }, [params]);
+  
+  // Format numbers for display
+  const formatNumber = (num) => {
+    return Number(num).toFixed(2);
+  };
+  
+  // Handle parameter changes
+  const handleParamChange = (e) => {
+    const { name, value } = e.target;
+    setParams(prevParams => ({
+      ...prevParams,
+      [name]: parseFloat(value)
+    }));
+  };
+  
+  return (
+    <div className="p-4 max-w-6xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Convertible Bond Pricing Model</h1>
+      
+      <div className="mb-6 p-4 bg-gray-100 rounded-lg">
+        <h2 className="text-xl font-semibold mb-2">Model Parameters</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium">Principal (Pr)</label>
+            <input
+              type="range"
+              name="Pr"
+              min="50"
+              max="200"
+              step="10"
+              value={params.Pr}
+              onChange={handleParamChange}
+              className="w-full"
+            />
+            <div className="text-sm">{formatNumber(params.Pr)}</div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium">Volatility (σ)</label>
+            <input
+              type="range"
+              name="sigma"
+              min="0.1"
+              max="0.8"
+              step="0.05"
+              value={params.sigma}
+              onChange={handleParamChange}
+              className="w-full"
+            />
+            <div className="text-sm">{formatNumber(params.sigma)}</div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium">Risk-free rate (r)</label>
+            <input
+              type="range"
+              name="r"
+              min="0.01"
+              max="0.1"
+              step="0.01"
+              value={params.r}
+              onChange={handleParamChange}
+              className="w-full"
+            />
+            <div className="text-sm">{formatNumber(params.r)}</div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium">Credit spread (rc)</label>
+            <input
+              type="range"
+              name="rc"
+              min="0.01"
+              max="0.1"
+              step="0.01"
+              value={params.rc}
+              onChange={handleParamChange}
+              className="w-full"
+            />
+            <div className="text-sm">{formatNumber(params.rc)}</div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium">Conversion ratio (cv)</label>
+            <input
+              type="range"
+              name="cv"
+              min="1.0"
+              max="2.0"
+              step="0.1"
+              value={params.cv}
+              onChange={handleParamChange}
+              className="w-full"
+            />
+            <div className="text-sm">{formatNumber(params.cv)}</div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium">Time to maturity (T)</label>
+            <input
+              type="range"
+              name="T"
+              min="1"
+              max="10"
+              step="1"
+              value={params.T}
+              onChange={handleParamChange}
+              className="w-full"
+            />
+            <div className="text-sm">{formatNumber(params.T)} years</div>
+          </div>
+        </div>
+      </div>
+      
+      <div className={`mb-6 p-4 rounded-lg ${results.stable ? 'bg-green-100' : 'bg-red-100'}`}>
+        <h2 className="text-xl font-semibold mb-2">Model Status</h2>
+        <div className="mb-2">{results.stability}</div>
+        
+        {results.issues.length > 0 && (
+          <div>
+            <h3 className="font-medium">Potential Issues:</h3>
+            <ul className="list-disc pl-5">
+              {results.issues.map((issue, idx) => (
+                <li key={idx} className="text-sm">{issue}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-4">Bond Value vs. Stock Price</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={results.timeSlices}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="stockPrice" 
+                scale="log"
+                domain={['auto', 'auto']} 
+                type="number"
+                tickFormatter={(value) => formatNumber(value)}
+                label={{ value: 'Stock Price', position: 'insideBottom', offset: -5 }}
+              />
+              <YAxis 
+                label={{ value: 'Bond Value', angle: -90, position: 'insideLeft' }}
+                domain={[0, 'auto']}
+              />
+              <Tooltip 
+                formatter={(value) => [formatNumber(value), 'Bond Value']}
+                labelFormatter={(value) => `Stock Price: ${formatNumber(value)}`}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="initial" name="Initial" stroke="#8884d8" dot={false} />
+              <Line type="monotone" dataKey="middle" name="Mid-Term" stroke="#82ca9d" dot={false} />
+              <Line type="monotone" dataKey="maturity" name="Maturity" stroke="#ff7300" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-4">Bond Value Over Time</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={results.stockSlices}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="time"
+                label={{ value: 'Time (years)', position: 'insideBottom', offset: -5 }}
+              />
+              <YAxis 
+                label={{ value: 'Bond Value', angle: -90, position: 'insideLeft' }}
+                domain={[0, 'auto']}
+              />
+              <Tooltip 
+                formatter={(value) => [formatNumber(value), 'Bond Value']}
+                labelFormatter={(value) => `Time: ${formatNumber(value)} years`}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="low" name="Low Stock Price" stroke="#8884d8" dot={false} />
+              <Line type="monotone" dataKey="medium" name="Medium Stock Price" stroke="#82ca9d" dot={false} />
+              <Line type="monotone" dataKey="high" name="High Stock Price" stroke="#ff7300" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      
+      <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+        <h2 className="text-xl font-semibold mb-2">Model Insights</h2>
+        <p className="mb-2">This model is calculating the price of a convertible bond using an explicit finite difference method to solve the PDE.</p>
+        <ul className="list-disc pl-5">
+          <li className="mb-1">
+            <strong>Conversion Threshold:</strong> At stock price S = {formatNumber(params.Pr * params.cv)}, the bond becomes convertible to equity.
+          </li>
+          <li className="mb-1">
+            <strong>Stability Condition:</strong> dt ≤ dx²/σ² must be satisfied for numerical stability.
+          </li>
+          <li className="mb-1">
+            <strong>Common Issues:</strong> Explicit FD methods often show instability at high volatilities or with coarse grids.
+          </li>
+          <li>
+            <strong>Model Parameters:</strong> Adjust the sliders above to explore where the model might produce unusual values.
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+};
+
+export default ModelVisualization;
